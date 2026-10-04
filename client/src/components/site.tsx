@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import { pageMetadata, translate, type Language } from "../lib/translations";
 
 const navigation = [
   { label: "Accueil", href: "/" },
@@ -8,14 +9,71 @@ const navigation = [
   { label: "Expertise", href: "/expertise-conseil" },
   { label: "Formations", href: "/formations" },
   { label: "Investissements", href: "/investissements" },
+  { label: "Ressources", href: "/ressources" },
   { label: "Blog", href: "/blog" },
   { label: "Contact", href: "/contact" },
 ];
 
-export function Brand({ light = false }: { light?: boolean }) {
+type LanguageContextValue = {
+  language: Language;
+  setLanguage: (language: Language) => void;
+  t: (source: string) => string;
+};
+
+const LanguageContext = createContext<LanguageContextValue | null>(null);
+const LANGUAGE_STORAGE_KEY = "nk-trade-site-language";
+
+function readInitialLanguage(): Language {
+  try {
+    return window.localStorage.getItem(LANGUAGE_STORAGE_KEY) === "en" ? "en" : "fr";
+  } catch {
+    return "fr";
+  }
+}
+
+export function useSiteLanguage() {
+  const value = useContext(LanguageContext);
+  if (!value) throw new Error("useSiteLanguage must be used inside SiteLayout");
+  return value;
+}
+
+export function SiteLayout({ children }: { children: ReactNode }) {
+  const [language, setLanguageState] = useState<Language>(readInitialLanguage);
+  const [location] = useLocation();
+  const t = useCallback((source: string) => translate(language, source), [language]);
+  const setLanguage = useCallback((nextLanguage: Language) => {
+    setLanguageState(nextLanguage);
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+    } catch {
+      // The language switch still works for this session when storage is unavailable.
+    }
+  }, []);
+  const contextValue = useMemo(() => ({ language, setLanguage, t }), [language, setLanguage, t]);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+    const metadata = pageMetadata[language][location];
+    if (metadata) {
+      document.title = metadata.title;
+      document.querySelector('meta[name="description"]')?.setAttribute("content", metadata.description);
+    }
+  }, [language, location]);
+
   return (
-    <Link href="/" className={`brand${light ? " brand-light" : ""}`} aria-label="NK Trade & Banking Experts — accueil">
-      <span className="brand-mark" aria-hidden="true">NK</span>
+    <LanguageContext.Provider value={contextValue}>
+      <SiteHeader />
+      <main id="contenu">{children}</main>
+      <SiteFooter />
+    </LanguageContext.Provider>
+  );
+}
+
+export function Brand({ light = false }: { light?: boolean }) {
+  const { t } = useSiteLanguage();
+  return (
+    <Link href="/" className={`brand${light ? " brand-light" : ""}`} aria-label={t("NK Trade & Banking Experts — accueil")}>
+      <img className="brand-logo-img" src="/images/nk-trade-banking-logo.png" alt={t("Logo NK Trade & Banking Experts")} width="54" height="54" />
       <span className="brand-copy">
         <span className="brand-name">NK Trade <i>&amp;</i> Banking</span>
         <span className="brand-subtitle">Experts · Trade Finance</span>
@@ -24,25 +82,35 @@ export function Brand({ light = false }: { light?: boolean }) {
   );
 }
 
-export function SiteLayout({ children }: { children: ReactNode }) {
+function LanguageToggle() {
+  const { language, setLanguage } = useSiteLanguage();
+  const nextLanguage = language === "fr" ? "en" : "fr";
   return (
-    <>
-      <SiteHeader />
-      <main id="contenu">{children}</main>
-      <SiteFooter />
-    </>
+    <button
+      type="button"
+      className="language-toggle"
+      onClick={() => setLanguage(nextLanguage)}
+      aria-label={language === "fr" ? "Passer en anglais" : "Switch to French"}
+      aria-pressed={language === "en"}
+      title={language === "fr" ? "English" : "Français"}
+    >
+      <span className={language === "fr" ? "language-current" : ""}>FR</span>
+      <span className="language-separator" aria-hidden="true">/</span>
+      <span className={language === "en" ? "language-current" : ""}>EN</span>
+    </button>
   );
 }
 
 function SiteHeader() {
+  const { t } = useSiteLanguage();
   const [location] = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <>
       <div className="topline">
         <div className="container topline-inner">
-          <span>Conseil · Formation · Trade Finance</span>
-          <span className="topline-note">Un partenaire de confiance pour vos opérations internationales</span>
+          <span>{t("Conseil · Formation · Trade Finance")}</span>
+          <span className="topline-note">{t("Un partenaire de confiance pour vos opérations internationales")}</span>
         </div>
       </div>
       <header className="site-header">
@@ -51,14 +119,14 @@ function SiteHeader() {
           <button
             className="menu-toggle"
             type="button"
-            aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
+            aria-label={menuOpen ? t("Fermer le menu") : t("Ouvrir le menu")}
             aria-expanded={menuOpen}
             aria-controls="main-navigation"
             onClick={() => setMenuOpen((open) => !open)}
           >
             {menuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
-          <nav id="main-navigation" className={`main-navigation${menuOpen ? " is-open" : ""}`} aria-label="Navigation principale">
+          <nav id="main-navigation" className={`main-navigation${menuOpen ? " is-open" : ""}`} aria-label={t("Navigation principale")}>
             {navigation.map((item) => {
               const active = location === item.href || (item.href !== "/" && location.startsWith(`${item.href}/`));
               return (
@@ -69,12 +137,13 @@ function SiteHeader() {
                   aria-current={active ? "page" : undefined}
                   onClick={() => setMenuOpen(false)}
                 >
-                  {item.label}
+                  {t(item.label)}
                 </Link>
               );
             })}
+            <LanguageToggle />
             <Link className="header-cta" href="/contact" onClick={() => setMenuOpen(false)}>
-              Échanger <ArrowRight size={15} aria-hidden="true" />
+              {t("Échanger")} <ArrowRight size={15} aria-hidden="true" />
             </Link>
           </nav>
         </div>
@@ -84,32 +153,34 @@ function SiteHeader() {
 }
 
 function SiteFooter() {
+  const { t } = useSiteLanguage();
   return (
     <footer className="site-footer">
       <div className="container footer-main">
         <div className="footer-brand-block">
           <Brand light />
-          <p>Conseil et formation en Trade Finance et banque internationale, au service de votre performance internationale.</p>
+          <p>{t("Conseil et formation en Trade Finance et banque internationale, au service de votre performance internationale.")}</p>
         </div>
         <div className="footer-nav-block">
-          <span className="footer-label">Explorer</span>
+          <span className="footer-label">{t("Explorer")}</span>
           <div className="footer-links">
-            <Link href="/expertise-conseil">Expertise &amp; conseil</Link>
-            <Link href="/formations">Formations</Link>
-            <Link href="/investissements">Investissements</Link>
-            <Link href="/blog">Blog</Link>
-            <Link href="/contact">Contact</Link>
+            <Link href="/expertise-conseil">{t("Expertise & conseil")}</Link>
+            <Link href="/formations">{t("Formations")}</Link>
+            <Link href="/investissements">{t("Investissements")}</Link>
+            <Link href="/ressources">{t("Ressources")}</Link>
+            <Link href="/blog">{t("Blog")}</Link>
+            <Link href="/contact">{t("Contact")}</Link>
           </div>
         </div>
         <div className="footer-cta-block">
-          <span className="footer-label">Parlons de vos enjeux</span>
-          <p>Banque, entreprise importatrice ou exportatrice : explorons la réponse adaptée à votre activité.</p>
-          <Link className="footer-link-cta" href="/contact">Prendre contact <ArrowRight size={15} /></Link>
+          <span className="footer-label">{t("Parlons de vos enjeux")}</span>
+          <p>{t("Banque, entreprise importatrice ou exportatrice : explorons la réponse adaptée à votre activité.")}</p>
+          <Link className="footer-link-cta" href="/contact">{t("Prendre contact")} <ArrowRight size={15} /></Link>
         </div>
       </div>
       <div className="container footer-bottom">
         <span>© {new Date().getFullYear()} NK Trade &amp; Banking Experts</span>
-        <span>Un partenaire de confiance au service de votre performance internationale.</span>
+        <span>{t("Un partenaire de confiance au service de votre performance internationale.")}</span>
       </div>
     </footer>
   );
@@ -192,6 +263,7 @@ export function FormFrame({
   embedUrl: string;
   externalUrl: string;
 }) {
+  const { t } = useSiteLanguage();
   return (
     <div className="form-section" id={id}>
       <div className="form-shell">
@@ -204,7 +276,7 @@ export function FormFrame({
         />
       </div>
       <a className="external-form-link" href={externalUrl} target="_blank" rel="noreferrer">
-        Ouvrir le formulaire dans un nouvel onglet <ArrowRight size={15} aria-hidden="true" />
+        {t("Ouvrir le formulaire dans un nouvel onglet")} <ArrowRight size={15} aria-hidden="true" />
       </a>
     </div>
   );
@@ -223,17 +295,18 @@ export function ArticleCard({
   date: string;
   excerpt: string;
 }) {
+  const { t } = useSiteLanguage();
   return (
     <article className="article-card">
-      <Link href={href} className="article-card-image" aria-label={`Lire : ${title}`}>
-        <img src={image} alt="Documents de commerce international préparés pour une opération Trade Finance" loading="lazy" />
+      <Link href={href} className="article-card-image" aria-label={`${t("Lire l'article")} : ${title}`}>
+        <img src={image} alt={t("Dossier Trade Finance")} loading="lazy" />
         <span className="article-image-arrow"><ArrowRight size={18} /></span>
       </Link>
       <div className="article-card-content">
-        <span className="article-date">{date} <span>·</span> Analyse</span>
+        <span className="article-date">{date} <span>·</span> {t("Analyse")}</span>
         <h3><Link href={href}>{title}</Link></h3>
         <p>{excerpt}</p>
-        <Link className="read-link" href={href}>Lire l'article <ArrowRight size={15} /></Link>
+        <Link className="read-link" href={href}>{t("Lire l'article")} <ArrowRight size={15} /></Link>
       </div>
     </article>
   );

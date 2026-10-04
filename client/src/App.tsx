@@ -8,6 +8,7 @@ import {
   ExpertisePage,
   HomePage,
   InvestmentsPage,
+  ResourcesPage,
   TrainingsPage,
 } from "./pages/SitePages";
 import NotFound from "./pages/NotFound";
@@ -23,8 +24,8 @@ function Router() {
         <Route path="/investissements" component={InvestmentsPage} />
         <Route path="/blog" component={BlogPage} />
         <Route path="/blog/le-trade-finance-2026" component={ArticlePage} />
+        <Route path="/ressources" component={ResourcesPage} />
         <Route path="/contact" component={ContactPage} />
-        <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>
     </SiteLayout>
